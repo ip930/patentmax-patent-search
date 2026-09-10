@@ -1,115 +1,112 @@
 # 安装与配置
 
+只有两步：拿密钥、设环境变量。没有配置文件要改，不用重启客户端。
+
 ## 第一步：拿密钥
 
 到 [api.ip930.com/features/api-platform](https://api.ip930.com/features/api-platform) 注册，创建一个 API 密钥。
 
-注册即送 ¥10，第一次调用成功后再送 ¥40，合计 ¥50，按检索 ¥0.10/次算够跑 500 次。不用绑卡。
+注册即送 ¥10，第一次调用成功后再送 ¥40，合计 ¥50——按检索 ¥0.10/次算够跑 500 次。不用绑卡。
 
-密钥形如 `pm_live_` 开头的一串字符，**只在创建时显示一次**，复制好。
+密钥有两种：
 
-## 第二步：配置 MCP
+| 前缀 | 用途 |
+| --- | --- |
+| `pm_live_` | 生产密钥，真实调用，按次扣费 |
+| `pm_test_` | 测试密钥，检索类每天 30 次，查新返回模拟结果，**全程不计费** |
 
-服务端点：
+**建议先拿测试密钥跑通流程**，确认参数拼得对、结果结构符合预期，再换生产密钥。
 
-```
-https://api.ip930.com/api/mcp
-```
+密钥**只在创建时显示一次**，复制好。
 
-传输方式是 Streamable HTTP，支持协议版本 `2025-06-18`、`2025-03-26`、`2024-11-05`。
+## 第二步：设环境变量
 
-### Claude Desktop / Claude Code
+**macOS / Linux / Git Bash**
 
-编辑配置文件，加一段：
-
-```json
-{
-  "mcpServers": {
-    "patentmax": {
-      "url": "https://api.ip930.com/api/mcp",
-      "headers": { "Authorization": "Bearer pm_live_你的密钥" }
-    }
-  }
-}
+```bash
+export PATENTMAX_API_KEY="pm_live_你的密钥"
 ```
 
-配置文件位置：
+**Windows PowerShell**
 
-- macOS `~/Library/Application Support/Claude/claude_desktop_config.json`
-- Windows `%APPDATA%\Claude\claude_desktop_config.json`
-- Claude Code 用 `claude mcp add` 命令，或改项目根目录的 `.mcp.json`
-
-改完重启客户端。
-
-### Cursor
-
-设置里找 MCP Servers，新建一个，类型选 HTTP，地址和请求头同上。
-
-### 只能填地址的客户端
-
-有些客户端只给一个 URL 输入框，填不了请求头。把密钥挂在查询参数上：
-
-```
-https://api.ip930.com/api/mcp?apikey=pm_live_你的密钥
+```powershell
+$env:PATENTMAX_API_KEY="pm_live_你的密钥"
 ```
 
-> 这种方式密钥会出现在 URL 里，可能被日志记录。能填请求头就优先用请求头。
+**Windows CMD**
 
-### OAuth 2.1 一键授权
-
-支持标准的 MCP 授权流程，不用手动复制密钥：
-
-客户端拿不带凭据的请求打过来，会收到 401 和这样一个响应头：
-
-```
-WWW-Authenticate: Bearer realm="patentmax-mcp",
-  resource_metadata="https://api.ip930.com/.well-known/oauth-protected-resource"
+```cmd
+set PATENTMAX_API_KEY=pm_live_你的密钥
 ```
 
-顺着它读到授权服务器元数据，走标准授权码 + PKCE 流程，用户在浏览器点一下确认即可。
+> `export` / `set` 只对当前终端会话有效，换个窗口要重设。想永久生效，写进 `~/.bashrc`、`~/.zshrc`，或 Windows 的系统环境变量。
 
-支持的规范：RFC 6749 授权码与客户端凭据、RFC 7009 撤销、RFC 7591 动态客户端注册、RFC 8414 授权服务器元数据、RFC 9728 受保护资源元数据。
+验证一下：
 
-## 第三步：验证接通了
-
-在客户端里问一句：
-
-```
-帮我查一下固态电池电解质相关的专利
+```bash
+echo ${PATENTMAX_API_KEY:0:8}
 ```
 
-能返回带公开号的结果就说明通了。也可以直接让它调 `patent_search`，关键词填 `固态电池`。
+输出 `pm_live_` 或 `pm_test_` 就对了。
 
-## 排查
+## 第三步：跑一次看看
 
-**返回 401**
+```bash
+python scripts/patentmax_client.py search --q "固态电池 AND 电解质" --size 5
+```
 
-- 检查 `Authorization` 的值有没有 `Bearer ` 前缀，少了这个前缀会被判为格式错误
-- 注意：只要请求里带了 `Authorization` 头，URL 上的 `?apikey=` 就不会被读取。两种方式选一种，别混用
-- 密钥可能已被撤销或过期，到控制台看一眼状态
+返回带公开号的 JSON 就说明通了。
 
-**找不到工具 / 工具列表是空的**
+`scripts/patentmax_client.py` **只用 Python 标准库**，Python 3.7 以上都能跑，不需要 `pip install` 任何东西。
 
-- 确认配置文件改对了位置，且客户端已重启
-- 有些客户端要手动在设置里把这个 server 打开
-- 先单独跑 `initialize` 和 `tools/list` 看握手是否成功
+## 没有 Python 怎么办
 
-**返回额度不足**
+直接 curl，接口清单和示例见 [references/api-reference.md](references/api-reference.md)。
 
-- 到 [控制台](https://api.ip930.com/features/api-platform)看余额
-- 体验额度的第二笔（¥40）要第一次调用成功后才到账，如果一直没到，确认第一次调用确实返回了 200
+先测连通性（这个接口不需要密钥）：
 
-**统计类接口报无权限**
+```bash
+curl -s "https://api.ip930.com/api/v1/health"
+```
 
-- `tech_landscape` 用的是统计类接口，单价 ¥1.00，确认余额够
-- 如果余额充足仍然报错，把错误码发给我们
+再测鉴权：
+
+```bash
+curl -s -H "Authorization: Bearer $PATENTMAX_API_KEY" \
+  --data-urlencode 'q=固态电池' --data-urlencode 'size=5' \
+  -G "https://api.ip930.com/api/search"
+```
+
+> 检索式里有中文和括号时，务必用 `--data-urlencode -G`，别手工拼 URL。
+
+用 curl 要自己处理一件事：**检索返回的 `id` 是临时标识，60 分钟过期**，详情类接口只认它，不认公开号。想查某件专利的详情，得先用公开号跑一次检索换 id。脚本里这一步是自动的。
+
+## 各客户端
+
+**Claude Code / Cursor / 任何能跑 Bash 的客户端** — 设好环境变量就能用，Skill 会自己调脚本。
+
+**Claude Desktop** — 需要开启命令执行能力。不方便的话，让它按 [api-reference.md](references/api-reference.md) 用 WebFetch 直接请求也行。
+
+**其他 Agent 平台** — 只要能执行 shell 或发 HTTP 请求即可。这个 Skill 不依赖 MCP。
+
+## 出问题
+
+先看 [references/faq.md](references/faq.md)，那里按现象列了排查步骤。
+
+最常见的三个：
+
+- **401** — 密钥复制不全，或 curl 时漏了 `Bearer ` 前缀
+- **404** — 查详情时临时 id 过期了，重新检索一次
+- **429** — 测试密钥每天 30 次用完了，换生产密钥
 
 ## 计费
 
 | 调用 | 单价 |
 | --- | --- |
-| 检索、详情、法律状态、引证、相似专利、附图 | ¥0.10 |
+| 检索、详情、法律状态、引证、相似专利 | ¥0.10 |
 | 权利要求、说明书全文 | ¥0.20 |
-| PDF 全文、企业画像、领域统计 | ¥1.00 |
+| 查新任务（含 DOCX 报告） | 约 ¥15 |
 
-按次扣费，调用失败不扣。用量和流水在控制台可查。
+按次扣费，**调用失败不扣**。用量和流水在[控制台](https://api.ip930.com/features/api-platform)可查。
+
+脚本每次返回都带 `_cost` 字段提示这次花了多少。查新是花钱的操作，必须显式加 `--yes` 才会执行。
