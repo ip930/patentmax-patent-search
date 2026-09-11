@@ -87,7 +87,22 @@ curl -s -H "Authorization: Bearer $PATENTMAX_API_KEY" \
 
 **Claude Desktop** — 需要开启命令执行能力。不方便的话，让它按 [api-reference.md](references/api-reference.md) 用 WebFetch 直接请求也行。
 
-**其他 Agent 平台** — 只要能执行 shell 或发 HTTP 请求即可。这个 Skill 不依赖 MCP。
+**其他 Agent 平台** — 只要能执行 shell 或发 HTTP 请求即可。
+
+**也可以走 MCP** — 同一套数据提供 MCP 接入，端点 `https://api.ip930.com/api/mcp`（Streamable HTTP），支持 OAuth 2.1 一键授权：
+
+```json
+{
+  "mcpServers": {
+    "patentmax": {
+      "url": "https://api.ip930.com/api/mcp",
+      "headers": { "Authorization": "Bearer pm_live_你的密钥" }
+    }
+  }
+}
+```
+
+MCP 提供检索类的五个工具，查新任务走本 Skill 的脚本。两条路用同一把密钥、同一个余额。
 
 ## 出问题
 

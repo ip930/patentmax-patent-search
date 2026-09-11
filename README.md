@@ -102,7 +102,9 @@ python scripts/patentmax_client.py novelty-docx --task-id <task_id> --out 查新
 export PATENTMAX_API_KEY="pm_live_你的密钥"
 ```
 
-完事了。没有配置文件要改，不用重启客户端，不依赖 MCP 支持——**任何能跑 Bash 的 AI 客户端都能用**。
+完事了。没有配置文件要改，不用重启客户端——**任何能跑 Bash 的 AI 客户端都能用**。
+
+> 同一套数据也提供 **MCP 接入**：端点 `https://api.ip930.com/api/mcp`，Streamable HTTP，支持 OAuth 2.1 一键授权，可直接接进 Claude、Cursor、扣子等兼容 Model Context Protocol 的客户端。这个 Skill 走 HTTP 接口是为了不挑客户端，两条路都通。
 
 `scripts/patentmax_client.py` 只用 Python 标准库，不需要 `pip install`。环境里连 Python 都没有的话，直接 curl 也行，接口清单在 [references/api-reference.md](references/api-reference.md)。
 
