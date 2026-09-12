@@ -87,7 +87,7 @@ def request(path, params=None, method="GET", body=None, headers=None, raw=False)
             403: "该密钥没有此接口的权限。",
             404: "资源不存在。若是查详情，多半是临时 id 已过期，重新检索一次。",
             409: "任务冲突，可能是重复提交。",
-            429: "触发限流。测试密钥每天 30 次，换生产密钥或稍后再试。",
+            429: "触发限流。沙箱密钥每天 30 次，换生产密钥或稍后再试。",
         }.get(exc.code, "")
         die(f"HTTP {exc.code}：{hint}", detail=detail, url=url.split("?")[0])
     except urllib.error.URLError as exc:
@@ -227,7 +227,8 @@ def do_novelty(args):
     """创建查新任务。这是花钱的操作，默认要 --yes 确认。"""
     if not args.yes:
         die(f"查新任务一次约 ¥{PRICES['novelty']:.2f}，确认要跑请加 --yes。",
-            hint="想先免费试跑，把 PATENTMAX_API_KEY 换成 pm_test_ 开头的测试密钥，会立即返回模拟结果且不计费。")
+            hint="只是想验证参数拼得对不对，可以把 PATENTMAX_API_KEY 换成 pm_test_ 开头的沙箱密钥——"
+                 "会立即返回模拟结果且不计费，但那不是真实查新结果。")
 
     body = {
         "title": args.title,
