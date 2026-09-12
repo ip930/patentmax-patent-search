@@ -142,6 +142,8 @@ def do_search(args):
         "ds": "cn" if args.scope == "cn" else "all",
         "page": args.page,
         "size": args.size,
+        "sort": getattr(args, "sort", None),
+        "hl": "1" if getattr(args, "highlight", False) else None,
     })
     rows = [normalize(r) for r in rows_of(payload)]
     total = payload.get("total") if isinstance(payload, dict) else None
@@ -223,6 +225,55 @@ def do_citation(args):
     }
 
 
+#: /api/ration 支持的统计维度。每个维度最多返回前 20 项，不返回长尾。
+DIMENSIONS = {
+    "applicant": "申请人", "inventor": "发明人",
+    "applicationYear": "申请年份", "documentYear": "公开年份",
+    "ipc": "IPC 完整分类", "ipc1": "IPC 部", "ipc2": "IPC 大类",
+    "ipc3": "IPC 小类", "ipc4": "IPC 大组",
+    "countryCode": "国家/地区", "province": "省份", "city": "城市",
+    "legalStatus": "法律状态", "type": "专利类型", "loc": "外观设计分类",
+}
+
+
+def do_stats(args):
+    """按维度做 Top 20 统计。管理层看布局通常先看这个，不是逐篇读专利。"""
+    if args.dimension not in DIMENSIONS:
+        die(f"未知维度 {args.dimension}。可选：" + "、".join(f"{k}({v})" for k, v in DIMENSIONS.items()))
+
+    payload = request("/api/ration", {"q": args.q, "c": args.dimension, "ds": "cn" if args.scope == "cn" else "all"})
+
+    # analysis_total 有时是数组、有时是 JSON 字符串，两种都得认
+    items = payload.get("analysis_total", payload) if isinstance(payload, dict) else payload
+    if isinstance(items, str):
+        try:
+            items = json.loads(items)
+        except json.JSONDecodeError:
+            items = []
+    if not isinstance(items, list):
+        items = []
+
+    return {
+        "query": args.q,
+        "dimension": args.dimension,
+        "dimension_name": DIMENSIONS[args.dimension],
+        "items": items,
+        "_cost": f"¥{PRICES['ration']:.2f}",
+        "_note": "只返回前 20 项，不含长尾；申请人未做集团归一化，同一企业可能分散在多行。",
+    }
+
+
+def do_company(args):
+    """企业专利画像。名称必须用工商全称，简称匹配不到。"""
+    payload = request("/api/a/portrait", {"en": args.name})
+    return {
+        "company": args.name,
+        "portrait": payload,
+        "_cost": f"¥{PRICES['portrait']:.2f}",
+        "_note": "名称匹配严格，需用工商全称。集团旗下不同主体需分别查询后合并。",
+    }
+
+
 def do_novelty(args):
     """创建查新任务。这是花钱的操作，默认要 --yes 确认。"""
     if not args.yes:
@@ -301,11 +352,30 @@ def main():
     sub = parser.add_subparsers(dest="command", required=True)
 
     p = sub.add_parser("search", help="检索专利")
-    p.add_argument("--q", required=True, help="检索式，支持 AND / OR / NOT 和括号")
+    p.add_argument("--q", required=True,
+                   help="检索式。支持 AND/OR/NOT 与括号，也支持字段式："
+                        "documentNumber:CN106328959A、t:区块链、legalStatus:有效专利、"
+                        "type:发明授权、applicationYear:[2024 TO 2024]")
     p.add_argument("--scope", default="all", choices=["all", "cn"], help="all 全球，cn 仅中国")
     p.add_argument("--page", type=int, default=1, help="1-100")
     p.add_argument("--size", type=int, default=20, help="1-50")
+    p.add_argument("--sort", default=None,
+                   choices=["relation", "applicationDate", "!applicationDate",
+                            "documentDate", "!documentDate", "rank"],
+                   help="排序：relation 相关度、applicationDate 申请日升序、"
+                        "!applicationDate 申请日降序、documentDate/!documentDate 公开日、rank 综合")
+    p.add_argument("--highlight", action="store_true", help="返回关键词高亮标记")
     p.set_defaults(func=do_search)
+
+    p = sub.add_parser("stats", help="按维度做 Top 20 统计")
+    p.add_argument("--q", required=True, help="检索式，圈定统计范围")
+    p.add_argument("--dimension", required=True, help="统计维度，见 --help 列表")
+    p.add_argument("--scope", default="all", choices=["all", "cn"])
+    p.set_defaults(func=do_stats)
+
+    p = sub.add_parser("company", help="企业专利画像")
+    p.add_argument("--name", required=True, help="企业工商全称，简称匹配不到")
+    p.set_defaults(func=do_company)
 
     p = sub.add_parser("brief", help="单篇速览")
     p.add_argument("--patent", required=True, help="公开号，如 CN109761224A")

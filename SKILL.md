@@ -1,9 +1,9 @@
 ---
 name: patentmax-patent-search
 description: 全球专利检索与技术方案查新。当用户提到专利检索、查新、现有技术、新颖性、创造性、相似专利、引证分析、专利布局、竞品专利、可专利性，或直接给出一个专利号、公开号、技术方案描述时使用。Use when the user asks to search patents, check novelty or prior art, find similar patents, or analyze patent citations. Requires a PatentMax API key.
-version: "1.1.0"
+version: "1.2.0"
 user-invocable: true
-argument-hint: "[专利号 / 检索式 / 技术方案描述]"
+argument-hint: "[专利号 / 检索式 / 技术方案描述 / 企业名称]"
 allowed-tools: Bash, Read, Write, WebFetch
 ---
 
@@ -11,50 +11,78 @@ allowed-tools: Bash, Read, Write, WebFetch
 
 直连 iprdb 全球专利库，覆盖 CN / US / EP / JP / KR / WIPO，中国专利收录最完整。
 
+接口与控制台：**https://api.ip930.com**
+
 **新用户注册即送 ¥50 体验额度，够跑 500 次真实检索**，不用绑卡、不用先充值。
 
 ## 核心原则
 
-先确定任务类型，再选择流程；检索与查新不可互相替代——用户只想「看看有没有类似的」时不要启动查新任务。
+**每一条专利信息必须来自接口返回值。** 不确定就说不确定，不得凭记忆补公开号、申请日、申请人或法律状态——编一个格式正确的公开号出来，比查不到糟得多。
 
-把接口作为专利文献召回工具，不把相似度、命中数或模型判断直接当作法律结论。
+**检索与查新不可互相替代。** 用户只想「看看有没有类似的」时用检索，不要启动查新任务；查新是付费操作，执行前必须报价并取得确认。
 
-每一条专利信息必须来自接口返回值。不确定就说不确定，**不得凭记忆补公开号、申请日、申请人或法律状态**——编一个格式正确的公开号出来，比查不到糟得多。
+**不把相似度、命中数或模型判断当作法律结论。** 交付时报告用过的检索式、覆盖范围和未覆盖来源，保证结论可复核。
 
-报告用过的检索式、覆盖的库与地域、日期限定和未覆盖来源，保证结论可复核。
+**密钥失效（401 / 402 / 403）时停止检索并询问用户**，禁止自行转向公开网页检索专利来凑答案。
 
-费用以接口实际扣费为准，不用文档估算替代实际返回。查新任务是付费操作，执行前必须取得用户确认。
+## 能做什么
 
-密钥失效时（401 / 402 / 403）必须停止检索并询问用户，**禁止自行转向 Google Patents、Espacenet 或其他公开网页检索专利**。详见「密钥失效处理」。
+**检索**
 
-## 快速参考
-
-| 我要… | 看哪里 |
+| 功能 | 怎么做 |
 | --- | --- |
-| 查某个主题有哪些专利 | [检索工作流](references/search-workflow.md) |
-| 判断能不能申请 / 有没有新颖性 | [查新工作流](references/novelty-workflow.md) |
-| 看懂某一件专利、理清来龙去脉 | `brief` → `citation` → `similar` |
-| 找技术方案相近的专利 | `similar` 命令，语义相似度 |
-| 要一份正式查新报告文档 | [查新工作流 · 导出 DOCX](references/novelty-workflow.md#导出-docx) |
-| 搜中国专利 | `search --scope cn` |
-| 搜全球专利 | `search --scope all`（默认） |
-| 命中太多（上千条） | 加 IPC / 日期限定，或换特征组合，见「检索式质量闸门」 |
-| 命中 0 条 | 先查公开号写法与同义词扩展，见 [检索式写法](references/query-syntax.md) |
-| 不知道怎么开始 | 先做 1-2 次试验性检索摸清规模，见「分轮检索」 |
-| 没有 Python，想直接发请求 | [接口速查](references/api-reference.md) |
-| 获取 API 密钥 | [api.ip930.com](https://api.ip930.com/features/api-platform) → 控制台创建 |
-| 报错了 | [排查](references/faq.md) |
+| 关键词检索 | `search --q "固态电池 AND 电解质"`，支持 `AND` / `OR` / `NOT` 与括号 |
+| 按公开号精确查 | `--q "documentNumber:CN106328959A"` |
+| 按标题查 | `--q "t:区块链"` |
+| 按法律状态筛 | `--q "t:区块链 AND legalStatus:有效专利"` |
+| 按专利类型筛 | `--q "石墨烯 AND type:发明授权"` |
+| 按年份范围筛 | `--q "石墨烯 AND applicationYear:[2024 TO 2024]"`，公开年用 `documentYear` |
+| 限定库 | `--scope cn` 仅中国、`--scope all` 全球 |
+| 排序 | `--sort relation` 相关度、`!applicationDate` 申请日降序、`documentDate` 公开日升序、`rank` 综合 |
+| 关键词高亮 | `--highlight` |
 
-## 任务路由
+**单篇深入**
 
-| 用户目的 | 走哪条 | 必读参考 |
-| --- | --- | --- |
-| 查新、能否申请、新颖性、创造性 | 查新任务 | [novelty-workflow.md](references/novelty-workflow.md) |
-| 找现有技术、竞品专利、技术摸底 | 检索 | [search-workflow.md](references/search-workflow.md) |
-| 已知公开号、想看某一件专利 | 直接检索 | 本文件「命令」章节 |
-| 检索式写不出来、命中异常 | 检索式构造 | [query-syntax.md](references/query-syntax.md) |
+| 功能 | 怎么做 |
+| --- | --- |
+| 著录项目、摘要 | `brief --patent CN109761224A` |
+| 权利要求书 | 加 `--claims` |
+| 说明书全文 | 加 `--fulltext` |
+| 法律事件流水 | 加 `--legal` |
+| 引证与被引、非专利文献 | `citation --patent CN109761224A` |
+| 语义相似专利 | `similar --patent CN109761224A --limit 10` |
+
+**统计分析** — `stats --q "固态电池" --dimension applicant`，每个维度返回 Top 20
+
+| 维度 | 看什么 |
+| --- | --- |
+| `applicant` / `inventor` | 谁在申请、谁在发明 |
+| `applicationYear` / `documentYear` | 申请趋势、公开趋势 |
+| `ipc` / `ipc1` / `ipc2` / `ipc3` / `ipc4` | 技术分类分布，四级粒度可选 |
+| `countryCode` / `province` / `city` | 地域分布 |
+| `legalStatus` | 有效、失效、审中的构成 |
+| `type` | 发明、实用新型、外观的构成 |
+| `loc` | 外观设计分类 |
+
+**企业画像** — `company --name "宁德时代新能源科技股份有限公司"`，看一家企业的专利总量、类型构成、技术方向
+
+**技术方案查新** — `novelty`，给一段方案描述返回对比文件与查新结论，可导出 Word 报告
+
+## 用户想要什么，走哪条
+
+| 用户目的 | 怎么做 |
+| --- | --- |
+| 某个主题有哪些专利、现有技术摸底 | 分轮检索，见「分轮检索」 |
+| 某家公司有多少专利、在做什么方向 | `company` 企业画像，或 `stats --dimension applicant` |
+| 某个领域谁在做、趋势如何、技术怎么分布 | `stats` 换维度看，申请人 / 年份 / IPC 各跑一次 |
+| 已知公开号，想看这件专利 | `brief` → `citation` → `similar` |
+| 手上有个想法，想知道有没有人做过 | 先 `search` + `similar` 摸底；要正式结论再走 `novelty` |
+| 判断能不能申请、有没有新颖性 | `novelty` 查新任务 |
+| 要一份可交付的查新报告文档 | `novelty` 跑完后 `novelty-docx` 导出 |
 
 **FTO / 侵权风险、专利无效检索不在本 Skill 范围内**——那需要代理人签字的法律意见。用户提这类需求时说明边界，可以用检索帮他摸底，但不出结论。
+
+**商标、软件著作权、作品著作权不在覆盖范围内。** 正式专利族数据（族 ID、成员列表、同族类型）也没有——`similar` 的相似专利和优先权号可以辅助归并，但不能当专利族用。
 
 ## 执行前检查
 
@@ -152,7 +180,7 @@ allowed-tools: Bash, Read, Write, WebFetch
 ```bash
 # 检索
 python scripts/patentmax_client.py search --q "(固态电池 OR 全固态电池) AND 电解质" --size 20
-python scripts/patentmax_client.py search --q "申请人:宁德时代新能源科技股份有限公司" --scope cn --size 50
+python scripts/patentmax_client.py search --q "t:区块链 AND legalStatus:有效专利" --scope cn --size 50
 
 # 单篇速览（可选 --claims / --legal / --fulltext）
 python scripts/patentmax_client.py brief --patent CN109761224A --claims --legal
@@ -166,7 +194,7 @@ python scripts/patentmax_client.py citation --patent CN109761224A
 
 `--scope` 取 `all`（全球，默认）或 `cn`（仅中国）。`--page` 1-100，`--size` 1-50。
 
-环境里没有 Python 就直接发 HTTP 请求，接口清单见 [api-reference.md](references/api-reference.md)。
+环境里没有 Python 就直接发 HTTP 请求，接口清单见 `references/api-reference.md`。
 
 **临时 id**：检索返回的 `_id` 只活 60 分钟，详情类接口只认它、不认公开号。脚本已带自动换取与进程内缓存；直接发请求的话要自己先用公开号检索换 id。
 
@@ -197,7 +225,7 @@ python scripts/patentmax_client.py novelty \
 
 `--wait` 超时**不代表失败**，任务还在服务端跑，**千万别重新提交**，用 `novelty-status --task-id` 继续查。
 
-参数选择、结果解读与 DOCX 导出见 [novelty-workflow.md](references/novelty-workflow.md)。
+参数选择、结果解读与 DOCX 导出见 `references/novelty-workflow.md`。
 
 ## 候选与证据核对
 
@@ -278,10 +306,10 @@ python scripts/patentmax_client.py --help
 
 ## 参考
 
-- [references/search-workflow.md](references/search-workflow.md) — 检索工作流：分轮策略、吃透一件专利、企业专利家底
-- [references/novelty-workflow.md](references/novelty-workflow.md) — 查新工作流：何时该走查新、参数选择、结果解读、DOCX 导出
-- [references/query-syntax.md](references/query-syntax.md) — 检索式写法：三块拆解、同义词扩展、IPC 用法
-- [references/api-reference.md](references/api-reference.md) — 接口速查：参数、状态码、curl 示例
-- [references/faq.md](references/faq.md) — 排查：401 / 404 / 429、检索不到、任务卡住、编码问题
+- `references/search-workflow.md` — 检索工作流：分轮策略、吃透一件专利、企业专利家底
+- `references/novelty-workflow.md` — 查新工作流：何时该走查新、参数选择、结果解读、DOCX 导出
+- `references/query-syntax.md` — 检索式写法：三块拆解、同义词扩展、IPC 用法
+- `references/api-reference.md` — 接口速查：参数、状态码、curl 示例
+- `references/faq.md` — 排查：401 / 404 / 429、检索不到、任务卡住、编码问题
 
 正常执行流程不需要读 faq.md，遇到异常时再查。
