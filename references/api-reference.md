@@ -1,33 +1,44 @@
 # 接口速查
 
-环境里没有 Python 时直接用这些。有 Python 的话优先用 `scripts/patentmax_client.py`——临时 id、字段名归一、任务轮询它都处理好了。
+环境里没有 Python 时直接用这些。有 Python 的话优先用 `scripts/patentmax_client.py`——字段名归一、计费汇总它都处理好了。
 
 **Base URL** `https://api.ip930.com`
 **认证** 所有接口都要 `Authorization: Bearer <API_KEY>`
 
 ---
 
-## 一个必须先懂的机制：临时 id
+## 按篇取数：直接用公开号
 
-`/api/search` 返回的每条结果里有个 `id`，这是**临时标识，60 分钟过期**。
-
-详情类接口（detail / claims / fulltext / legal / citation / similar）**只认这个 id，不认公开号**。
-
-所以想查某件专利的详情，必须先用公开号跑一次检索拿到 id：
+所有按篇取数的接口都收 `pn`（公开号）参数，**不需要先检索换 id**：
 
 ```bash
-# 1. 用公开号检索，从结果里取 id
 curl -s -H "Authorization: Bearer $PATENTMAX_API_KEY" \
-  "https://api.ip930.com/api/search?q=CN109761224A&ds=all&size=10"
-
-# 2. 用拿到的 id 查详情
-curl -s -H "Authorization: Bearer $PATENTMAX_API_KEY" \
-  "https://api.ip930.com/api/detail?id=<上一步的 id>"
+  "https://api.ip930.com/api/patent?pn=CN109761224A"
 ```
 
-字段名不统一：公开号可能叫 `documentNumber`、`publicationNumber` 或 `pn`；临时 id 可能叫 `id` 或 `temporaryId`。取值时按候选名依次试。
+服务端自己完成内部寻址，这些前置调用**不进用户账单**。
+
+> 也可以传 `id=`（检索结果里那个内部标识），价钱一样。老版本客户端为了躲开
+> 「换 id 要先花一次检索钱」而做的落盘缓存，现在没有必要了。
+
+字段名不统一：公开号可能叫 `documentNumber`、`publicationNumber` 或 `pn`。取值时按候选名依次试。
 
 结果列表也有好几种叫法：`patents` / `list` / `data` / `records`。
+
+---
+
+## 每日免费额度
+
+生产密钥每天前 **30 次** `/api/search` 与 `/api/patent` 不扣费（北京时间零点重置），
+用完自动转正常计费，不会中断。响应头里能看到：
+
+| 响应头 | 含义 |
+| --- | --- |
+| `x-patentmax-charged-cents` | 本次实扣（分） |
+| `x-patentmax-balance-cents` | 扣完后的余额（分） |
+| `x-patentmax-free-used` / `x-patentmax-free-quota` | 今天已用 / 总免费次数 |
+
+> 用 curl 看这些头要加 `-i`，否则只会打印响应体。
 
 ---
 
@@ -51,91 +62,46 @@ curl -s -H "Authorization: Bearer $PATENTMAX_API_KEY" \
 
 > 检索式里有中文和括号，一定用 `--data-urlencode -G`，别手工拼 URL。
 
-**¥0.10 / 次**
+**¥0.10 / 次**（每天前 30 次免费）
 
-### 详情类
+### 整篇专利（优先用这个）
 
-以下都是 `GET`，都只接受一个 `id` 参数（临时 id，不是公开号）：
+`GET /api/patent?pn=<公开号>` — **¥0.10 / 次**，每天前 30 次免费。
+
+一次返回著录项、权利要求书、说明书全文三块，**计一次价**。
+分别去调 detail + claims + fulltext 是 ¥0.15，还多两次往返，没有理由那样做。
+
+```bash
+curl -s -H "Authorization: Bearer $PATENTMAX_API_KEY" \
+  "https://api.ip930.com/api/patent?pn=CN109761224A"
+```
+
+> 某一块上游取不到时，该字段为 null 并在 `unavailable` 里列出，其余照常返回；
+> 三块全取不到才算失败。
+
+### 按字段单取
+
+以下都是 `GET`，都接受 `pn`（公开号）或 `id`：
 
 | 接口 | 返回 | 单价 |
 | --- | --- | --- |
-| `/api/detail` | 著录项目：标题、申请人、发明人、申请日、公开日、IPC、法律状态 | ¥0.10 |
-| `/api/claims` | 权利要求书 | ¥0.20 |
-| `/api/fulltext` | 说明书全文（很长） | ¥0.20 |
-| `/api/legal` | 法律事件流水 | ¥0.10 |
-| `/api/citation` | 引用与被引用，含非专利文献 | ¥0.10 |
+| `/api/detail` | 著录项目：标题、申请人、发明人、申请日、公开日、IPC、法律状态 | ¥0.05 |
+| `/api/claims` | 权利要求书 | ¥0.05 |
+| `/api/fulltext` | 说明书全文（很长） | ¥0.05 |
+| `/api/legal` | 法律事件流水 | ¥0.05 |
+| `/api/citation` | 引用与被引用，含非专利文献 | ¥0.05 |
 | `/api/similar` | 语义相似专利 | ¥0.10 |
+| `/api/img` | 摘要附图（二进制图片） | ¥0.05 |
+| `/api/pdf` | PDF 全文（二进制） | ¥0.30 |
+| `/api/ration` | 统计分析，一次一个维度 Top 20 | ¥0.30 |
+| `/api/a/portrait` | 企业画像 | ¥0.30 |
 
 ```bash
 curl -s -H "Authorization: Bearer $PATENTMAX_API_KEY" \
-  "https://api.ip930.com/api/claims?id=<temporary_id>"
+  "https://api.ip930.com/api/claims?pn=CN109761224A"
 ```
 
----
-
-## 查新
-
-### POST /api/v1/novelty/tasks — 创建任务
-
-**约 ¥15 / 次。** 异步执行，先返回 task_id，再轮询。
-
-```bash
-curl -s -X POST "https://api.ip930.com/api/v1/novelty/tasks" \
-  -H "Authorization: Bearer $PATENTMAX_API_KEY" \
-  -H "Content-Type: application/json" \
-  -H "Idempotency-Key: my-unique-key-001" \
-  -d '{
-    "title": "阀门卡滞诊断与清理装置",
-    "technical_solution": "采集阀门转轴角度、启闭扭矩及前后水位，根据扭矩增量和积雪含水状态判断卡滞，并控制振动装置清理。",
-    "purpose": "pre_filing",
-    "depth": "standard",
-    "regions": ["global"],
-    "date_range": {"type": "all"},
-    "legal_status": "all",
-    "source_scope": {"patents": true, "papers": true, "web": true}
-  }'
-```
-
-| 字段 | 必填 | 取值 |
-| --- | --- | --- |
-| `technical_solution` | **是** | 技术方案描述，越具体结果越准 |
-| `title` | 否 | 方案名称 |
-| `purpose` | 否 | `novelty` \| `inventiveness` \| `pre_filing` \| `project_screening` \| `competitor_scan` |
-| `depth` | 否 | `quick` \| `standard` \| `deep` |
-| `regions` | 否 | `["global"]` 或 `["CN","US","EP","JP","KR","WO"]` |
-| `legal_status` | 否 | `all` \| `active` \| `pending` \| `inactive` |
-| `source_scope` | 否 | `{"patents":true,"papers":true,"web":true}` |
-
-返回 `201`，body 里 `data.task_id` 是任务号。
-
-> **`Idempotency-Key` 建议一定带上。** 网络重试时它能防止重复建任务、重复扣 ¥15。
-
-### GET /api/v1/novelty/tasks/{task_id} — 查状态
-
-```bash
-curl -s -H "Authorization: Bearer $PATENTMAX_API_KEY" \
-  "https://api.ip930.com/api/v1/novelty/tasks/<task_id>"
-```
-
-`data.status` 走 `pending` → `running` → `succeeded` / `failed`。
-
-**轮询间隔从 5 秒起逐步退避到 30 秒**，查新要跑几分钟，密集轮询没有意义。
-
-### GET /api/v1/novelty/tasks/{task_id}/result — 取结构化结果
-
-状态 `succeeded` 之后调。
-
-### GET /api/v1/novelty/tasks/{task_id}/report.docx — 下载报告
-
-返回二进制流，直接落盘：
-
-```bash
-curl -s -H "Authorization: Bearer $PATENTMAX_API_KEY" \
-  "https://api.ip930.com/api/v1/novelty/tasks/<task_id>/report.docx" \
-  -o 查新报告.docx
-```
-
-不额外收费，包含在那 ¥15 里。
+**只要同时需要两块以上，就用 `/api/patent`**——它一口价，拆开单买反而贵。
 
 ---
 
@@ -157,9 +123,9 @@ curl -s "https://api.ip930.com/api/v1/health"
 | 401 | 密钥无效或已撤销 | 确认密钥完整、`Bearer ` 前缀没漏 |
 | 402 | 余额不足 | 去控制台充值 |
 | 403 | 该密钥无此接口权限 | 换密钥或联系支持 |
-| 404 | 资源不存在 | 查详情时多半是临时 id 过期，重新检索 |
+| 404 | 没找到这篇专利 | 确认公开号正确且带国别代码，如 `CN109761224A` |
 | 409 | 任务冲突 | 多半是重复提交，用同一个 Idempotency-Key 重试是安全的 |
-| 429 | 限流 | 沙箱密钥每天 30 次；生产密钥稍后重试 |
+| 429 | 限流 | 生产密钥 600 次/分；沙箱密钥每天 30 次 |
 
 调用失败不扣费。
 
@@ -170,7 +136,7 @@ curl -s "https://api.ip930.com/api/v1/health"
 | 前缀 | 行为 |
 | --- | --- |
 | `pm_live_` | 生产密钥，真实数据，从余额按次扣费。**正常使用都用这个** |
-| `pm_test_` | 沙箱密钥，查新返回模拟结果、不调用外部服务，检索类每天 30 次 |
+| `pm_test_` | 沙箱密钥，检索类每天 30 次，报告类任务返回模拟结果 |
 
 沙箱密钥用于开发阶段验证参数与响应结构，跑不出真实检索结果。
 
